@@ -1,0 +1,196 @@
+#!/bin/bash
+
+# Default color codes for different message types
+INFO_COLOR="\e[0m"       # No color (default)
+WARN_COLOR="\e[33m"      # Yellow
+SUCCESS_COLOR="\e[32m"   # Green
+ERROR_COLOR="\e[31m"     # Red
+DEBUG_COLOR="\e[34m"     # Blue
+
+# Override color values if environment variables are set
+INFO_COLOR="${INFO_COLOR_OVERRIDE:-$INFO_COLOR}"
+WARN_COLOR="${WARN_COLOR_OVERRIDE:-$WARN_COLOR}"
+SUCCESS_COLOR="${SUCCESS_COLOR_OVERRIDE:-$SUCCESS_COLOR}"
+ERROR_COLOR="${ERROR_COLOR_OVERRIDE:-$ERROR_COLOR}"
+DEBUG_COLOR="${DEBUG_COLOR_OVERRIDE:-$DEBUG_COLOR}"
+
+# Default format for different message types
+INFO_FORMAT="INFO: [MESSAGE]"
+WARN_FORMAT="WARNING: [MESSAGE]"
+SUCCESS_FORMAT="Success: [MESSAGE]"
+ERROR_FORMAT="ERROR: [MESSAGE]"
+DEBUG_FORMAT="DEBUG: [MESSAGE]"
+
+# Override message format if environment variables are set
+INFO_FORMAT="${INFO_FORMAT_OVERRIDE:-$INFO_FORMAT}"
+WARN_FORMAT="${WARN_FORMAT_OVERRIDE:-$WARN_FORMAT}"
+SUCCESS_FORMAT="${SUCCESS_FORMAT_OVERRIDE:-$SUCCESS_FORMAT}"
+ERROR_FORMAT="${ERROR_FORMAT_OVERRIDE:-$ERROR_FORMAT}"
+DEBUG_FORMAT="${DEBUG_FORMAT_OVERRIDE:-$DEBUG_FORMAT}"
+
+show_help() {
+    cat << EOF
+Usage: $(basename "$0") [MESSAGE] [OPTIONS]
+
+This script prints messages with optional formatting and logging features.
+
+Arguments:
+  MESSAGE               The message to be printed.
+
+Options:
+  --type, -t [TYPE]     Type of the message (info, warn, success, error, debug). Default is 'debug'.
+  --log, -l             Enable logging to the log file (log file path is determined by the \$LOG variable).
+  --upper, -u           Convert the message to uppercase. Set to 'true' to enable.
+  --double-line, -d     Print the message with an extra empty line.
+  --log-dir, -ld        Sets the \$LOG variable (overrides any previously exported \$LOG value).
+  --help, -h            Show this help message and exit.
+
+Examples:
+  $(basename "$0") "This is a debug message" -t debug
+  $(basename "$0") "Warning message" --type warn --log --double-line
+  $(basename "$0") "Error message" -t error -u true
+
+Environment Variables:
+  ENABLE_LOG            Enable logging (set to 'true' to log messages to the log file).
+  LOG                   The log file path where messages will be logged (if logging is enabled).
+  ENABLE_DEBUG          Enable debug messages (set to 'true' to print debug messages).
+  
+  # Customizing Message Colors:
+  INFO_COLOR_OVERRIDE    Custom color code for info messages (default: no color).
+  WARN_COLOR_OVERRIDE    Custom color code for warning messages (default: yellow).
+  SUCCESS_COLOR_OVERRIDE Custom color code for success messages (default: green).
+  ERROR_COLOR_OVERRIDE   Custom color code for error messages (default: red).
+  DEBUG_COLOR_OVERRIDE   Custom color code for debug messages (default: blue).
+
+Color Customization:
+  You can override the default message colors by exporting the environment variables before running the script.
+  For example:
+    export WARN_COLOR_OVERRIDE="\e[35m"   # Changes warning messages to magenta.
+    export SUCCESS_COLOR_OVERRIDE="\e[36m"  # Changes success messages to cyan.
+  Then run the script with:
+    $(basename "$0") "Warning message" --type warn
+
+EOF
+    exit 0
+}
+
+
+
+# Function to log messages
+log_message() {
+    local log_line="$1"
+    local force_log="$2"
+    if [[ "$force_log" == "true" ]] || [[ "$ENABLE_LOG" == "true" ]] && [[ -n "$LOG" ]] && [[ -f "$LOG" ]]; then
+        echo "$log_line" >> "$LOG"
+        if [[ $? -eq 0 ]]; then
+            return 0  # Success
+        else
+            return 1  # Failed to write
+        fi
+    else
+        return 1  # Logging is disabled or log file does not exist
+    fi
+}
+
+# Function to print messages with color
+print_with_color() {
+    local message="$1"
+    local type="$2"
+    
+    case "$type" in
+        "info") echo -e "${INFO_COLOR}${message}\e[0m" ;;  # Info color
+        "warn") echo -e "${WARN_COLOR}${message}\e[0m" ;;  # Warning color
+        "success") echo -e "${SUCCESS_COLOR}${message}\e[0m" ;;  # Success color
+        "error") echo -e "${ERROR_COLOR}${message}\e[0m" ;;  # Error color
+        "debug") echo -e "${DEBUG_COLOR}${message}\e[0m" ;;  # Debug color
+        *) echo "$message" ;;  # Default
+    esac
+}
+
+# Function to format messages
+format_message() {
+    local message="$1"
+    local type="$2"
+    local formatted_message=""
+    
+    case "$type" in
+        "info") formatted_message="${INFO_FORMAT//MESSAGE/$message}" ;;
+        "warn") formatted_message="${WARN_FORMAT//MESSAGE/$message}" ;;
+        "success") formatted_message="${SUCCESS_FORMAT//MESSAGE/$message}" ;;
+        "error") formatted_message="${ERROR_FORMAT//MESSAGE/$message}" ;;
+        "debug")
+            if [ "$ENABLE_DEBUG" == "true" ]; then
+                formatted_message="${DEBUG_FORMAT//MESSAGE/$message}"
+            fi
+            ;;
+        *) echo "Unrecognized type: $type"; return 1 ;;
+    esac
+    
+    echo "$formatted_message"
+}
+
+# Assert at least one argument was passed
+if [[ $# -eq 0 ]]; then
+    echo "At least one argument is required."
+    show_help
+fi
+
+# Print help if the help flag was passed
+if [[ "$1" == "--help" ]] ||  [[ "$1" == "-h" ]]; then
+    show_help
+fi
+
+# Check if the string starts with -- or -
+if [[ "$1" == --* ]] || [[ "$1" == -* ]]; then
+    show_help
+fi
+
+message="$1"
+type="debug"
+upper="false"
+double_line="false"
+log="false"
+redirect="false"
+
+shift
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --type|-t) type="$2"; shift ;;
+        --log|-l) log="true" ;;
+        --upper|-u) upper="$2"; shift ;;
+        --double-line|-d) double_line="true" ;;
+        --log-dir|-ld) LOG="$2" ;;
+        --redirect-to-stderr|-r) redirect="$2" ;;
+        *) echo "Unknown parameter passed: $1" >&2; return 1 ;;
+    esac
+    shift
+done
+
+# Convert message to uppercase if needed
+if [ "$upper" == "true" ]; then
+    message=$(echo "$message" | tr '[:lower:]' '[:upper:]')
+fi
+
+# Usage in the main script
+formatted_message=$(format_message "$message" "$type")
+
+if [[ "$redirect" == "true" ]];then
+    # Print the message to stderr
+    print_with_color "$formatted_message" "$type" >&2
+else
+    print_with_color "$formatted_message" "$type"
+fi
+
+# Log the message if logging is enabled and path is valid
+log_message "$formatted_message" "$log"
+
+# Print an additional empty line if double_line is true
+if [ "$double_line" == "true" ]; then
+    if [[ "$redirect" == "true" ]];then
+        echo "" >&2
+    else
+        echo ""
+    fi
+fi
+
