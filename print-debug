@@ -62,17 +62,24 @@ Environment Variables:
   ERROR_COLOR_OVERRIDE   Custom color code for error messages (default: red).
   DEBUG_COLOR_OVERRIDE   Custom color code for debug messages (default: blue).
 
-Color Customization:
-  You can override the default message colors by exporting the environment variables before running the script.
+  # Customizing Message Formats:
+  INFO_FORMAT_OVERRIDE    Custom format for info messages (default: "INFO: [MESSAGE]").
+  WARN_FORMAT_OVERRIDE    Custom format for warning messages (default: "WARNING: [MESSAGE]").
+  SUCCESS_FORMAT_OVERRIDE Custom format for success messages (default: "Success: [MESSAGE]").
+  ERROR_FORMAT_OVERRIDE   Custom format for error messages (default: "ERROR: [MESSAGE]").
+  DEBUG_FORMAT_OVERRIDE   Custom format for debug messages (default: "DEBUG: [MESSAGE]").
+
+Message Format Customization:
+  You can customize the message format by exporting variables before running the script.
+  Simply use "MESSAGE" as the placeholder for the actual message content.
   For example:
-    export WARN_COLOR_OVERRIDE="\e[35m"   # Changes warning messages to magenta.
-    export SUCCESS_COLOR_OVERRIDE="\e[36m"  # Changes success messages to cyan.
-  Then run the script with:
-    $(basename "$0") "Warning message" --type warn
+    export INFO_FORMAT_OVERRIDE="*INFO* --> MESSAGE"
+    $(basename "$0") "This is an info message" --type info
 
 EOF
     exit 0
 }
+
 
 
 
@@ -161,7 +168,7 @@ while [[ "$#" -gt 0 ]]; do
         --upper|-u) upper="$2"; shift ;;
         --double-line|-d) double_line="true" ;;
         --log-dir|-ld) LOG="$2" ;;
-        --redirect-to-stderr|-r) redirect="$2" ;;
+        --redirect-to-stderr|-r) redirect="true" ;;
         *) echo "Unknown parameter passed: $1" >&2; return 1 ;;
     esac
     shift
