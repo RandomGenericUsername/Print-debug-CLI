@@ -1,10 +1,27 @@
 #!/bin/bash
 
+# Enhanced print-debug utility with advanced logging capabilities
+# Version: 2.0.0 - Enhanced for large-scale projects
+
+# Initialize default values
 type="debug"
 upper="false"
 double_line="false"
 log="false"
 redirect="false"
+module=""
+context=""
+caller=""
+json_data=""
+timer_action=""
+timer_name=""
+error_code=""
+suggestion=""
+show_stack="false"
+show_resources="false"
+notify_level=""
+level=2
+additional_logs=()
 
 # Default color codes for different message types
 INFO_COLOR="\e[0m"       # No color (default)
@@ -12,6 +29,7 @@ WARN_COLOR="\e[33m"      # Yellow
 SUCCESS_COLOR="\e[32m"   # Green
 ERROR_COLOR="\e[31m"     # Red
 DEBUG_COLOR="\e[34m"     # Blue
+CRITICAL_COLOR="\e[35m"  # Magenta
 
 # Override color values if environment variables are set
 INFO_COLOR="${INFO_COLOR_OVERRIDE:-$INFO_COLOR}"
@@ -19,13 +37,15 @@ WARN_COLOR="${WARN_COLOR_OVERRIDE:-$WARN_COLOR}"
 SUCCESS_COLOR="${SUCCESS_COLOR_OVERRIDE:-$SUCCESS_COLOR}"
 ERROR_COLOR="${ERROR_COLOR_OVERRIDE:-$ERROR_COLOR}"
 DEBUG_COLOR="${DEBUG_COLOR_OVERRIDE:-$DEBUG_COLOR}"
+CRITICAL_COLOR="${CRITICAL_COLOR_OVERRIDE:-$CRITICAL_COLOR}"
 
-# Default format for different message types
-INFO_FORMAT="INFO: [MESSAGE]"
-WARN_FORMAT="WARNING: [MESSAGE]"
-SUCCESS_FORMAT="Success: [MESSAGE]"
-ERROR_FORMAT="ERROR: [MESSAGE]"
-DEBUG_FORMAT="DEBUG: [MESSAGE]"
+# Default format for different message types (enhanced with timestamp and context)
+INFO_FORMAT="[TIMESTAMP] [INFO]  [MODULE:CONTEXT] [PID:PROCESS_ID] MESSAGE"
+WARN_FORMAT="[TIMESTAMP] [WARN]  [MODULE:CONTEXT] [PID:PROCESS_ID] MESSAGE"
+SUCCESS_FORMAT="[TIMESTAMP] [SUCCESS] [MODULE:CONTEXT] [PID:PROCESS_ID] MESSAGE"
+ERROR_FORMAT="[TIMESTAMP] [ERROR] [MODULE:CONTEXT] [PID:PROCESS_ID] MESSAGE"
+DEBUG_FORMAT="[TIMESTAMP] [DEBUG] [MODULE:CONTEXT] [PID:PROCESS_ID] MESSAGE"
+CRITICAL_FORMAT="[TIMESTAMP] [CRITICAL] [MODULE:CONTEXT] [PID:PROCESS_ID] MESSAGE"
 
 # Override message format if environment variables are set
 INFO_FORMAT="${INFO_FORMAT_OVERRIDE:-$INFO_FORMAT}"
@@ -33,200 +53,544 @@ WARN_FORMAT="${WARN_FORMAT_OVERRIDE:-$WARN_FORMAT}"
 SUCCESS_FORMAT="${SUCCESS_FORMAT_OVERRIDE:-$SUCCESS_FORMAT}"
 ERROR_FORMAT="${ERROR_FORMAT_OVERRIDE:-$ERROR_FORMAT}"
 DEBUG_FORMAT="${DEBUG_FORMAT_OVERRIDE:-$DEBUG_FORMAT}"
+CRITICAL_FORMAT="${CRITICAL_FORMAT_OVERRIDE:-$CRITICAL_FORMAT}"
 
-
-#DEFAULT_LOG_PATH="/tmp/$(basename "$0")/log"
+# Enhanced logging configuration
 DEFAULT_LOG_PATH="/tmp/print-debug.log"
 LOG_PATH="${LOG:-$DEFAULT_LOG_PATH}"
+COMPONENT_LOG_DIR="${COMPONENT_LOG_DIR:-/tmp/component-logs}"
 
+# Timer storage directory
+TIMER_DIR="/tmp/print-debug-timers"
+mkdir -p "$TIMER_DIR" 2>/dev/null
 
+# Log level hierarchy (lower numbers = more verbose)
+declare -A LOG_LEVELS=(
+    ["debug"]=1
+    ["info"]=2
+    ["warn"]=3
+    ["error"]=4
+    ["critical"]=5
+)
+
+# Get current log level from environment or default to info
+CURRENT_LOG_LEVEL="${LOG_LEVEL:-info}"
+CURRENT_LOG_LEVEL_NUM="${LOG_LEVELS[$CURRENT_LOG_LEVEL]:-2}"
+
+# Enhanced help function
 show_help() {
-    cat << EOF
-Usage: $(basename "$0") [MESSAGE] [OPTIONS]
+    cat << 'EOF'
+Usage: print-debug [MESSAGE] [OPTIONS]
 
-Description: This script prints messages with optional formatting and logging features.
+Enhanced print-debug utility with advanced logging capabilities for large-scale projects.
 
 Arguments:
     MESSAGE               The message to be printed.
 
-Options:
-    --type, -t [TYPE]     Type of the message (info, warn, success, error, debug). [DEFAULT: debug].
-    --log, -l             Enables logging. 
-    --upper, -u           Convert the message to uppercase. Set to 'true' to enable.
-    --double-line, -d     Print the message with an extra empty line.
-    --log-dir, -ld        Sets the the logging path by setting the \$LOG variable (overrides any previously exported \$LOG value).
-    --redirect, -r        Redirects the output to stderr.
-    --help, -h            Show this help message and exit.
+Basic Options:
+    --type, -t [TYPE]     Message type: info, warn, success, error, debug, critical [DEFAULT: debug]
+    --log, -l             Enable logging to file
+    --upper, -u           Convert message to uppercase
+    --double-line, -d     Print message with extra empty line
+    --log-dir, -ld [PATH] Set custom log directory path
+    --redirect-to-stderr  Redirect output to stderr
+    --help, -h            Show this help message
+
+Enhanced Options:
+    --module, -m [NAME]           Module/component name (auto-detected from script path if not provided)
+    --context, -c [FUNC:LINE]     Function and line context (e.g., "process_icons:142")
+    --caller [FUNCTION]           Calling function name
+    --level, -lv [1-5]           Log level (1=debug, 2=info, 3=warn, 4=error, 5=critical)
+    --json [DATA]                 Log structured JSON data
+    --error-code [CODE]           Error classification code
+    --suggestion [TEXT]           Help text for errors
+    --show-stack                  Show call stack trace
+    --show-resources              Show system resource usage
+    --notify [LEVEL]              System notification level (low, normal, critical)
+
+Timer Options:
+    --start-timer [NAME]          Start a named timer
+    --end-timer [NAME]            End a named timer and show duration
+    --show-duration [NAME]        Show duration of a timer without ending it
+
+Logging Options:
+    --also-log-to [FILE]          Additional log file (can be used multiple times)
+    --component-log               Auto-route to component-specific log file
 
 Environment Variables:
-    LOG                   The log file path where messages will be logged (if logging is enabled).
-    ENABLE_LOG            Enable logging (set to 'true' to log messages to the log file).
-    ENABLE_DEBUG          Enable debug messages (set to 'true' to print debug messages).
-  
-    # Customizing Message Colors:
-    INFO_COLOR_OVERRIDE    Custom color code for info messages (default: no color).
-    WARN_COLOR_OVERRIDE    Custom color code for warning messages (default: yellow).
-    SUCCESS_COLOR_OVERRIDE Custom color code for success messages (default: green).
-    ERROR_COLOR_OVERRIDE   Custom color code for error messages (default: red).
-    DEBUG_COLOR_OVERRIDE   Custom color code for debug messages (default: blue).
-
-    # Customizing Message Formats:
-    INFO_FORMAT_OVERRIDE    Custom format for info messages (default: "INFO: [MESSAGE]").
-    WARN_FORMAT_OVERRIDE    Custom format for warning messages (default: "WARNING: [MESSAGE]").
-    SUCCESS_FORMAT_OVERRIDE Custom format for success messages (default: "Success: [MESSAGE]").
-    ERROR_FORMAT_OVERRIDE   Custom format for error messages (default: "ERROR: [MESSAGE]").
-    DEBUG_FORMAT_OVERRIDE   Custom format for debug messages (default: "DEBUG: [MESSAGE]").
+    LOG                   Log file path
+    ENABLE_LOG           Enable logging (true/false)
+    ENABLE_DEBUG         Enable debug messages (true/false)
+    LOG_LEVEL            Current log level (debug, info, warn, error, critical)
+    COMPONENT_LOG_DIR    Directory for component-specific logs
 
 Examples:
-    $(basename "$0") "This is a debug message" -t debug
-    $(basename "$0") "Warning message" --type warn --log --double-line
-    $(basename "$0") "Error message" -t error -u true
-
-Message Format Customization:
-    You can customize the message format by exporting variables before running the script.
-    Simply use "MESSAGE" as the placeholder for the actual message content.
-    For example:
-        export INFO_FORMAT_OVERRIDE="*INFO* --> MESSAGE"
-        $(basename "$0") "This is an info message" --type info
+    # Basic usage
+    print-debug "Processing started" -t info
+    
+    # Enhanced context logging
+    print-debug "Icon processed" -t debug -m waybar -c "process_icons:142" --caller "generate_icons"
+    
+    # Timer usage
+    print-debug "Starting operation" --start-timer "wallpaper_change"
+    print-debug "Operation complete" --end-timer "wallpaper_change"
+    
+    # Error with context
+    print-debug "Config error" -t error --error-code "CONFIG_001" --suggestion "Check ~/.config/hypr/hyprland.conf"
+    
+    # JSON logging
+    print-debug "Theme data" -t debug --json '{"theme":"default","colors":["#ff0000","#00ff00"]}'
+    
+    # Component logging
+    print-debug "Waybar restarted" -t info -m waybar --component-log
 
 EOF
     exit 0
 }
 
+# Function to get current timestamp with milliseconds
+get_timestamp() {
+    if command -v date >/dev/null 2>&1; then
+        # Try to get milliseconds if supported
+        if date +%Y-%m-%d\ %H:%M:%S.%3N >/dev/null 2>&1; then
+            date +%Y-%m-%d\ %H:%M:%S.%3N
+        else
+            date +%Y-%m-%d\ %H:%M:%S
+        fi
+    else
+        echo "$(date)"
+    fi
+}
 
+# Function to auto-detect module from script path
+auto_detect_module() {
+    local script_path="${BASH_SOURCE[2]:-$0}"
+    local script_name=$(basename "$script_path" .sh)
+    
+    # Extract module from common dotfiles paths
+    if [[ "$script_path" == *"/wallpaper/"* ]]; then
+        echo "wallpaper"
+    elif [[ "$script_path" == *"/waybar/"* ]]; then
+        echo "waybar"
+    elif [[ "$script_path" == *"/rofi/"* ]]; then
+        echo "rofi"
+    elif [[ "$script_path" == *"/wlogout/"* ]]; then
+        echo "wlogout"
+    elif [[ "$script_path" == *"/system/"* ]]; then
+        echo "system"
+    elif [[ "$script_path" == *"/shared/"* ]]; then
+        echo "shared"
+    else
+        echo "$script_name"
+    fi
+}
 
+# Function to get system resource usage
+get_system_resources() {
+    local memory_usage=""
+    local cpu_usage=""
+    local disk_usage=""
+    
+    # Get memory usage
+    if command -v free >/dev/null 2>&1; then
+        memory_usage=$(free -m | awk 'NR==2{printf "MEM:%.1f%%", $3*100/$2}')
+    fi
+    
+    # Get CPU usage (simplified)
+    if command -v top >/dev/null 2>&1; then
+        cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{printf "CPU:%.1f%%", 100-$1}')
+    fi
+    
+    # Get disk usage for /tmp
+    if command -v df >/dev/null 2>&1; then
+        disk_usage=$(df /tmp | awk 'NR==2{printf "DISK:%.1f%%", $5}' | sed 's/%//')
+    fi
+    
+    echo "${memory_usage:+$memory_usage }${cpu_usage:+$cpu_usage }${disk_usage:+$disk_usage}"
+}
 
-# Function to log messages
+# Function to get call stack
+get_call_stack() {
+    local stack=""
+    local i=2  # Start from 2 to skip this function and the calling function
+
+    while [[ $i -lt ${#BASH_SOURCE[@]} ]]; do
+        local func="${FUNCNAME[$i]:-main}"
+        local file=$(basename "${BASH_SOURCE[$i]}")
+        local line="${BASH_LINENO[$((i-1))]}"
+
+        if [[ -n "$file" && "$file" != "print-debug" ]]; then
+            stack="${stack:+$stack -> }${file}:${func}:${line}"
+        fi
+        ((i++))
+    done
+
+    echo "$stack"
+}
+
+# Timer functions
+start_timer() {
+    local timer_name="$1"
+    local timestamp=$(date +%s.%N)
+    echo "$timestamp" > "$TIMER_DIR/$timer_name"
+}
+
+end_timer() {
+    local timer_name="$1"
+    local timer_file="$TIMER_DIR/$timer_name"
+
+    if [[ -f "$timer_file" ]]; then
+        local start_time=$(cat "$timer_file")
+        local end_time=$(date +%s.%N)
+        local duration=$(echo "$end_time - $start_time" | bc 2>/dev/null || echo "0")
+        rm -f "$timer_file"
+        echo "$duration"
+    else
+        echo "0"
+    fi
+}
+
+show_timer_duration() {
+    local timer_name="$1"
+    local timer_file="$TIMER_DIR/$timer_name"
+
+    if [[ -f "$timer_file" ]]; then
+        local start_time=$(cat "$timer_file")
+        local current_time=$(date +%s.%N)
+        local duration=$(echo "$current_time - $start_time" | bc 2>/dev/null || echo "0")
+        echo "$duration"
+    else
+        echo "0"
+    fi
+}
+
+# Enhanced logging function
 log_message() {
     local log_line="$1"
     local force_log="$2"
-    if [[ "$force_log" == "true" ]] || [[ "$ENABLE_LOG" == "true" ]] && [[ -n "$LOG_PATH" ]]; then
-        echo "$log_line" >> "$LOG_PATH"
-        if [[ $? -eq 0 ]]; then
-            return 0  # Success
-        else
-            return 1  # Failed to write
-        fi
+    local log_files=("$LOG_PATH")
+
+    # Add additional log files
+    for additional_log in "${additional_logs[@]}"; do
+        log_files+=("$additional_log")
+    done
+
+    # Add component-specific log if module is specified
+    if [[ -n "$module" && "$component_log" == "true" ]]; then
+        mkdir -p "$COMPONENT_LOG_DIR" 2>/dev/null
+        log_files+=("$COMPONENT_LOG_DIR/${module}.log")
+    fi
+
+    if [[ "$force_log" == "true" ]] || [[ "$ENABLE_LOG" == "true" ]]; then
+        for log_file in "${log_files[@]}"; do
+            if [[ -n "$log_file" ]]; then
+                # Ensure log directory exists
+                local log_dir=$(dirname "$log_file")
+                mkdir -p "$log_dir" 2>/dev/null
+                echo "$log_line" >> "$log_file"
+            fi
+        done
+        return 0
     else
-        return 1  # Logging is disabled or log file does not exist
+        return 1
     fi
 }
 
-# Function to print messages with color
-print_with_color() {
-    local message="$1"
-    local type="$2"
-    
-    case "$type" in
-        "info") echo -e "${INFO_COLOR}${message}\e[0m" ;;  # Info color
-        "warn") echo -e "${WARN_COLOR}${message}\e[0m" ;;  # Warning color
-        "success") echo -e "${SUCCESS_COLOR}${message}\e[0m" ;;  # Success color
-        "error") echo -e "${ERROR_COLOR}${message}\e[0m" ;;  # Error color
-        "debug") echo -e "${DEBUG_COLOR}${message}\e[0m" ;;  # Debug color
-        *) echo "$message" ;;  # Default
-    esac
-}
-
-# Function to format messages
+# Enhanced message formatting
 format_message() {
     local message="$1"
-    local type="$2"
+    local msg_type="$2"
+    local timestamp=$(get_timestamp)
+    local process_id=$$
     local formatted_message=""
-    
-    case "$type" in
-        "info") formatted_message="${INFO_FORMAT//MESSAGE/$message}" ;;
-        "warn") formatted_message="${WARN_FORMAT//MESSAGE/$message}" ;;
-        "success") formatted_message="${SUCCESS_FORMAT//MESSAGE/$message}" ;;
-        "error") formatted_message="${ERROR_FORMAT//MESSAGE/$message}" ;;
+    local module_context="${module:-$(auto_detect_module)}"
+
+    # Add context if provided
+    if [[ -n "$context" ]]; then
+        module_context="${module_context}:${context}"
+    elif [[ -n "$caller" ]]; then
+        module_context="${module_context}:${caller}"
+    fi
+
+    # Get appropriate format template
+    case "$msg_type" in
+        "info") formatted_message="$INFO_FORMAT" ;;
+        "warn") formatted_message="$WARN_FORMAT" ;;
+        "success") formatted_message="$SUCCESS_FORMAT" ;;
+        "error") formatted_message="$ERROR_FORMAT" ;;
         "debug")
             if [ "$ENABLE_DEBUG" == "true" ]; then
-                formatted_message="${DEBUG_FORMAT//MESSAGE/$message}"
+                formatted_message="$DEBUG_FORMAT"
+            else
+                return 1  # Don't format debug messages if debug is disabled
             fi
             ;;
-        *) echo "Unrecognized type: $type"; return 1 ;;
+        "critical") formatted_message="$CRITICAL_FORMAT" ;;
+        *) echo "Unrecognized type: $msg_type"; return 1 ;;
     esac
-    
+
+    # Replace placeholders
+    formatted_message="${formatted_message//TIMESTAMP/$timestamp}"
+    formatted_message="${formatted_message//MODULE:CONTEXT/$module_context}"
+    formatted_message="${formatted_message//PID:PROCESS_ID/PID:$process_id}"
+    formatted_message="${formatted_message//MESSAGE/$message}"
+
+    # Add JSON data if provided
+    if [[ -n "$json_data" ]]; then
+        formatted_message="$formatted_message | JSON: $json_data"
+    fi
+
+    # Add error code and suggestion if provided
+    if [[ -n "$error_code" ]]; then
+        formatted_message="$formatted_message | ERROR_CODE: $error_code"
+    fi
+
+    if [[ -n "$suggestion" ]]; then
+        formatted_message="$formatted_message | SUGGESTION: $suggestion"
+    fi
+
+    # Add timer information if requested
+    if [[ -n "$timer_action" && -n "$timer_name" ]]; then
+        case "$timer_action" in
+            "start")
+                start_timer "$timer_name"
+                formatted_message="$formatted_message | TIMER_START: $timer_name"
+                ;;
+            "end")
+                local duration=$(end_timer "$timer_name")
+                formatted_message="$formatted_message | TIMER_END: $timer_name (${duration}s)"
+                ;;
+            "show")
+                local duration=$(show_timer_duration "$timer_name")
+                formatted_message="$formatted_message | TIMER_DURATION: $timer_name (${duration}s)"
+                ;;
+        esac
+    fi
+
+    # Add system resources if requested
+    if [[ "$show_resources" == "true" ]]; then
+        local resources=$(get_system_resources)
+        if [[ -n "$resources" ]]; then
+            formatted_message="$formatted_message | RESOURCES: $resources"
+        fi
+    fi
+
+    # Add call stack if requested
+    if [[ "$show_stack" == "true" ]]; then
+        local stack=$(get_call_stack)
+        if [[ -n "$stack" ]]; then
+            formatted_message="$formatted_message | STACK: $stack"
+        fi
+    fi
+
     echo "$formatted_message"
 }
 
-# Assert at least one argument was passed
-if [[ $# -eq 0 ]]; then
-    echo "At least one argument is required."
-    echo ""
-    show_help
-fi
+# Enhanced color printing function
+print_with_color() {
+    local message="$1"
+    local msg_type="$2"
 
-# Print help if the help flag was passed
-if [[ "$1" == "--help" ]] ||  [[ "$1" == "-h" ]]; then
-    show_help
-fi
-
-message="$1"
-shift
-options="$@"
-
-# Parse arguments
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --type|-t) 
-            type="$2"
-            shift 2 
-            ;;
-        --log|-l) 
-            log="true"
-            shift 
-            ;;
-        --upper|-u) 
-            upper="true"
-            shift 
-            ;;
-        --double-line|-d) 
-            double_line="true"
-            shift 
-            ;;
-        --log-dir|-ld) 
-            LOG_PATH="$2"
-            shift 2 
-            ;;
-        --redirect-to-stderr|-r) 
-            redirect="true"
-            shift 
-            ;;
-        *) 
-            echo "Unknown parameter passed: $1" >&2
-            exit 1 
-            ;;
+    case "$msg_type" in
+        "info") echo -e "${INFO_COLOR}${message}\e[0m" ;;
+        "warn") echo -e "${WARN_COLOR}${message}\e[0m" ;;
+        "success") echo -e "${SUCCESS_COLOR}${message}\e[0m" ;;
+        "error") echo -e "${ERROR_COLOR}${message}\e[0m" ;;
+        "debug") echo -e "${DEBUG_COLOR}${message}\e[0m" ;;
+        "critical") echo -e "${CRITICAL_COLOR}${message}\e[0m" ;;
+        *) echo "$message" ;;
     esac
-done
+}
 
-if [[ "$type" == "debug" ]] && [[ ! "$ENABLE_DEBUG" == "true" ]];then
-    exit 0
-fi
+# Function to check log level filtering
+should_log() {
+    local msg_type="$1"
+    local msg_level="${LOG_LEVELS[$msg_type]:-2}"
 
-# Convert message to uppercase if needed
-if [ "$upper" == "true" ]; then
-    message=$(echo "$message" | tr '[:lower:]' '[:upper:]')
-fi
-
-# Usage in the main script
-formatted_message=$(format_message "$message" "$type")
-
-if [[ "$redirect" == "true" ]] || [[ "$ENABLE_REDIRECT" == "true" ]];then
-    # Print the message to stderr
-    print_with_color "$formatted_message" "$type" >&2
-else
-    print_with_color "$formatted_message" "$type"
-fi
-
-# Log the message if logging is enabled and path is valid
-log_message "$formatted_message" "$log"
-
-# Print an additional empty line if double_line is true
-if [ "$double_line" == "true" ]; then
-    if [[ "$redirect" == "true" ]] || [[ "$ENABLE_REDIRECT" == "true" ]];then
-        echo "" >&2
-    else
-        echo ""
+    # Always log if level is explicitly set via --level option
+    if [[ "$level" -ne 2 ]]; then
+        return $(( level <= CURRENT_LOG_LEVEL_NUM ? 0 : 1 ))
     fi
-fi
 
+    # Use message type level
+    return $(( msg_level >= CURRENT_LOG_LEVEL_NUM ? 0 : 1 ))
+}
+
+# System notification function
+send_notification() {
+    local message="$1"
+    local level="$2"
+
+    if command -v notify-send >/dev/null 2>&1; then
+        case "$level" in
+            "low") notify-send -u low "print-debug" "$message" ;;
+            "normal") notify-send -u normal "print-debug" "$message" ;;
+            "critical") notify-send -u critical "print-debug" "$message" ;;
+        esac
+    fi
+}
+
+# Main argument parsing and execution
+main() {
+    # Check for help first
+    if [[ $# -eq 0 ]] || [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        if [[ $# -eq 0 ]]; then
+            echo "At least one argument is required."
+            echo ""
+        fi
+        show_help
+    fi
+
+    local message="$1"
+    shift
+
+    # Initialize component_log flag
+    local component_log="false"
+
+    # Parse arguments
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --type|-t)
+                type="$2"
+                shift 2
+                ;;
+            --log|-l)
+                log="true"
+                shift
+                ;;
+            --upper|-u)
+                upper="true"
+                shift
+                ;;
+            --double-line|-d)
+                double_line="true"
+                shift
+                ;;
+            --log-dir|-ld)
+                LOG_PATH="$2"
+                shift 2
+                ;;
+            --redirect-to-stderr)
+                redirect="true"
+                shift
+                ;;
+            --module|-m)
+                module="$2"
+                shift 2
+                ;;
+            --context|-c)
+                context="$2"
+                shift 2
+                ;;
+            --caller)
+                caller="$2"
+                shift 2
+                ;;
+            --level|-lv)
+                level="$2"
+                shift 2
+                ;;
+            --json)
+                json_data="$2"
+                shift 2
+                ;;
+            --error-code)
+                error_code="$2"
+                shift 2
+                ;;
+            --suggestion)
+                suggestion="$2"
+                shift 2
+                ;;
+            --show-stack)
+                show_stack="true"
+                shift
+                ;;
+            --show-resources)
+                show_resources="true"
+                shift
+                ;;
+            --notify)
+                notify_level="$2"
+                shift 2
+                ;;
+            --start-timer)
+                timer_action="start"
+                timer_name="$2"
+                shift 2
+                ;;
+            --end-timer)
+                timer_action="end"
+                timer_name="$2"
+                shift 2
+                ;;
+            --show-duration)
+                timer_action="show"
+                timer_name="$2"
+                shift 2
+                ;;
+            --also-log-to)
+                additional_logs+=("$2")
+                shift 2
+                ;;
+            --component-log)
+                component_log="true"
+                shift
+                ;;
+            *)
+                echo "Unknown parameter passed: $1" >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    # Check if message should be logged based on level filtering
+    if ! should_log "$type"; then
+        exit 0
+    fi
+
+    # Special handling for debug messages
+    if [[ "$type" == "debug" ]] && [[ ! "$ENABLE_DEBUG" == "true" ]]; then
+        exit 0
+    fi
+
+    # Convert message to uppercase if needed
+    if [ "$upper" == "true" ]; then
+        message=$(echo "$message" | tr '[:lower:]' '[:upper:]')
+    fi
+
+    # Format the message with all enhancements
+    formatted_message=$(format_message "$message" "$type")
+
+    # Exit if formatting failed (e.g., debug message when debug disabled)
+    if [[ $? -ne 0 ]]; then
+        exit 0
+    fi
+
+    # Print the message
+    if [[ "$redirect" == "true" ]] || [[ "$ENABLE_REDIRECT" == "true" ]]; then
+        print_with_color "$formatted_message" "$type" >&2
+    else
+        print_with_color "$formatted_message" "$type"
+    fi
+
+    # Log the message if logging is enabled
+    log_message "$formatted_message" "$log"
+
+    # Send system notification if requested
+    if [[ -n "$notify_level" ]]; then
+        send_notification "$message" "$notify_level"
+    fi
+
+    # Print an additional empty line if double_line is true
+    if [ "$double_line" == "true" ]; then
+        if [[ "$redirect" == "true" ]] || [[ "$ENABLE_REDIRECT" == "true" ]]; then
+            echo "" >&2
+        else
+            echo ""
+        fi
+    fi
+}
+
+# Execute main function with all arguments
+main "$@"

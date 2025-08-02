@@ -1,178 +1,304 @@
 # print-debug
-The `print-debug` script prints and logs messages with customizable colors, formats, and settings.
+Enhanced print-debug utility with advanced logging capabilities for large-scale projects.
 
 # Index
 1. [Features](#features)
 2. [Getting Started](#getting-started)
-3. [Message type](#message-type)
-4. [Loggingg messages](#logging-messages)
-5. [Usage](#usage)
-6. [Customization](#customization)
+3. [Enhanced Features](#enhanced-features)
+4. [Message Types](#message-types)
+5. [Advanced Logging](#advanced-logging)
+6. [Performance Timing](#performance-timing)
+7. [Context and Debugging](#context-and-debugging)
+8. [Usage Examples](#usage-examples)
+9. [Environment Variables](#environment-variables)
+10. [Legacy Features](#legacy-features)
+11. [Customization](#customization)
 
 # Features
-- **Message Type**: Supports different message types that alter a message's output format and behavior.
-- **Logging**: Option to log messages to a file. 
-- **Uppercase Conversion**: Option to convert the message text to uppercase.
-- **Double Line Output**: Option to add an extra blank line after the message.
-- **Output redirection**: Allows redirecting outpu to stederr.
-- **Environment-Based Customization**: Environment variables can be set to configure color codes and message formats.
 
-# Getting started 
+## Core Enhanced Features (v2.0.0)
+- **Structured Timestamps**: Millisecond-precision timestamps with consistent formatting
+- **Module Auto-Detection**: Automatically detects component/module from script path
+- **Performance Timing**: Built-in timer functionality for operation profiling
+- **Enhanced Message Types**: Supports debug, info, warn, success, error, and critical
+- **Component Logging**: Separate log files for different components/modules
+- **System Resource Monitoring**: Optional CPU, memory, and disk usage reporting
+- **Structured JSON Logging**: Support for complex data structures
+- **Advanced Error Reporting**: Error codes with actionable suggestions
+- **Call Stack Tracing**: Optional call stack information for debugging
+- **Log Level Filtering**: Hierarchical log levels with environment control
+- **Multiple Log Destinations**: Log to multiple files simultaneously
 
-## Print debug message
-Set `ENABLE_DEBUG=true` to print debug messages.
+## Legacy Features (Maintained)
+- **Message Type**: Supports different message types that alter output format and behavior
+- **Logging**: Option to log messages to a file
+- **Uppercase Conversion**: Option to convert message text to uppercase
+- **Double Line Output**: Option to add extra blank line after message
+- **Output Redirection**: Allows redirecting output to stderr
+- **Environment-Based Customization**: Configurable colors and message formats
+
+# Getting Started
+
+## Basic Usage (Enhanced Output)
+Set `ENABLE_DEBUG=true` to print debug messages with enhanced formatting:
 ```bash
 export ENABLE_DEBUG=true
 print-debug "This is a debug message"
 ```
 ### Output
-<pre><code class="language-html"><span style="color:blue">DEBUG: [This is a debug message]</span>
-</code></pre>
-
-## Print non-debug message
-Specify the message type by passing the `--type` or `-t` option:
-```bash
-print-debug "This is a info message" -t info
 ```
-### Output
-```bash
-INFO: [This is an info message]
+[2025-08-01 14:06:33.296] [DEBUG] [script-name] [PID:47377] This is a debug message
 ```
 
-# Message Type
-Specify the message type using `--type` or `-t` to control the format and color:
+## Enhanced Message Types
+Specify the message type using `--type` or `-t`:
+```bash
+print-debug "System ready" -t info
+print-debug "Warning: High CPU usage" -t warn
+print-debug "Operation completed" -t success
+print-debug "Configuration error" -t error
+print-debug "Critical system failure" -t critical
+```
+
+# Enhanced Features
+
+## 1. Module Auto-Detection
+The utility automatically detects modules from script paths:
+```bash
+# When called from /path/to/wallpaper/script.sh
+print-debug "Wallpaper changed" -t info
+# Output: [timestamp] [INFO] [wallpaper] [PID:123] Wallpaper changed
+```
+
+**Manual Override:**
+```bash
+print-debug "Custom module" -t info -m "custom_component"
+```
+
+## 2. Context Information
+Add function and line context:
+```bash
+print-debug "Processing icons" -t debug -c "process_icons:142"
+print-debug "Operation complete" -t info --caller "generate_waybar_icons"
+```
+
+## 3. Performance Timing
+Track operation durations:
+```bash
+# Start timer
+print-debug "Starting operation" -t info --start-timer "wallpaper_change"
+
+# Show duration without ending
+print-debug "Progress update" -t debug --show-duration "wallpaper_change"
+
+# End timer with duration
+print-debug "Operation complete" -t success --end-timer "wallpaper_change"
+```
+
+## 4. Advanced Error Reporting
+Structured error messages with codes and suggestions:
+```bash
+print-debug "Config file not found" -t error \
+    --error-code "CONFIG_001" \
+    --suggestion "Check ~/.config/hypr/hyprland.conf exists"
+```
+
+## 5. JSON Logging
+Log structured data:
+```bash
+print-debug "Theme applied" -t info \
+    --json '{"theme":"default","colors":["#ff0000","#00ff00"]}'
+```
+
+## 6. Component Logging
+Separate log files per component:
+```bash
+print-debug "Waybar restarted" -t info -m waybar --component-log
+# Creates: /tmp/component-logs/waybar.log
+```
+
+## 7. System Resource Monitoring
+Monitor system resources:
+```bash
+print-debug "System status" -t info --show-resources
+# Output: [...] System status | RESOURCES: MEM:24.5% CPU:97.0% DISK:1.0%
+```
+
+# Message Types
+Enhanced message types with structured formatting:
+
+- `debug`: Debug messages (only shown when ENABLE_DEBUG=true)
 - `info`: Information messages
-- `warn`: Warning messages
+- `warn`: Warning messages  
 - `success`: Success messages
 - `error`: Error messages
-- `debug`: Debug messages
+- `critical`: Critical system messages
+
+## Log Level Filtering
+Set global log level to filter messages:
+```bash
+export LOG_LEVEL="warn"  # Only show warn, error, critical
+print-debug "Debug message" -t debug    # Won't show
+print-debug "Warning message" -t warn   # Will show
+```
+
+# Advanced Logging
+
+## Multiple Log Destinations
+Log to multiple files:
+```bash
+print-debug "Critical event" -t critical \
+    --also-log-to "/var/log/system.log" \
+    --also-log-to "/tmp/audit.log"
+```
+
+## Component-Specific Logs
+Automatic routing to component logs:
+```bash
+export COMPONENT_LOG_DIR="/custom/log/path"
+print-debug "Component message" -t info -m waybar --component-log
+```
+
+# Performance Timing
+
+## Timer Operations
+```bash
+# Start named timer
+print-debug "Starting" --start-timer "operation_name"
+
+# Check duration without ending
+print-debug "Progress" --show-duration "operation_name"  
+
+# End timer and show total duration
+print-debug "Complete" --end-timer "operation_name"
+```
+
+# Context and Debugging
+
+## Call Stack Information
+```bash
+print-debug "Error occurred" -t error --show-stack
+```
+
+## Function Context
+```bash
+print-debug "Processing" -t debug -c "function_name:line_number"
+```
+
+# Usage Examples
+
+## Basic Enhanced Usage
+```bash
+# Simple message with auto-detection
+print-debug "Processing started" -t info
+
+# With module specification
+print-debug "Theme applied" -t success -m waybar
+
+# With context and timing
+print-debug "Starting operation" -t info --start-timer "op1" -c "main:45"
+```
+
+## Complex Real-World Example
+```bash
+# Complete workflow with all features
+print-debug "Starting wallpaper change" -t info \
+    --start-timer "wallpaper_workflow" \
+    -m wallpaper \
+    --component-log \
+    --json '{"wallpaper":"new-bg.png","source":"user_selection"}'
+
+print-debug "Workflow completed" -t success \
+    --end-timer "wallpaper_workflow" \
+    --show-resources \
+    -m wallpaper
+```
+
+## Run Demo
+Execute the included usage script to see all features:
+```bash
+./usage.sh
+```
+
+# Environment Variables
+
+## Enhanced Variables (v2.0.0)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LOG_LEVEL` | Global log level (debug, info, warn, error, critical) | info |
+| `COMPONENT_LOG_DIR` | Directory for component-specific logs | /tmp/component-logs |
+
+## Core Variables
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LOG` | Main log file path | /tmp/print-debug.log |
+| `ENABLE_LOG` | Enable logging (true/false) | false |
+| `ENABLE_DEBUG` | Enable debug messages (true/false) | false |
+
+## Color Customization
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `INFO_COLOR_OVERRIDE` | Custom color for info messages | No color |
+| `WARN_COLOR_OVERRIDE` | Custom color for warning messages | Yellow |
+| `SUCCESS_COLOR_OVERRIDE` | Custom color for success messages | Green |
+| `ERROR_COLOR_OVERRIDE` | Custom color for error messages | Red |
+| `DEBUG_COLOR_OVERRIDE` | Custom color for debug messages | Blue |
+| `CRITICAL_COLOR_OVERRIDE` | Custom color for critical messages | Magenta |
+
+# Legacy Features
+
+All original print-debug features are maintained for backward compatibility:
 
 ## Conditional Debug Messaging
-`debug` type messages are print only if `ENABLE_DEBUG=true` is set. Other types are printed regardless.
-
-# Logging Messages
-## Enable logging
-You can enable logging so that the message is written to a log file by either of the following two ways:
-- Exporting the env var `ENABLE_LOG=true`.
-- Passing the `--log` or `-l` options.
-
-## Log file path
-The log file is by default `/tmp/print-debug.log` and can be changed by:
-- Exporting the env var `LOG=/some/path/to/log`.
-- Passing the `--log-dir` or `-ld` option.
-
-If `$LOG` variable is exported and `--log-dir` option is also used, the value passed in the option overrides the exported variable.
-
-## Logging debug print
-Logging follows the message type behavior. Non `debug` messages are logged regardless of `ENABLE_DEBUG`. `debug` messages are only logged if `ENABLE_DEBUG=true` is set.
-
-
-# Usage
-
-## Print debug
-Print debug messages. Requires [enabling debug](#conditional-debug-messaging)  
-
 ```bash
 export ENABLE_DEBUG=true
-print-debug "This is a debug message"
+print-debug "Debug message"  # Only shows when ENABLE_DEBUG=true
 ```
 
-**Output**
-<pre><code class="language-html"><span style="color:blue">DEBUG: [This is a debug message]</span>
-</code></pre>
-
-
-## Print info
+## Basic Logging
 ```bash
-print-debug "This is an info message" --type info
-```
-**Output**
-<pre><code class="language-html"><span>INFO: [This is an info message]</span>
-</code></pre>
-
-## Print warning
-```bash
-print-debug "This is a warning message" --type warn
-```
-**Output**
-<pre><code class="language-html"><span style="color:orange">WARNING: [This is a warning message]</span>
-</code></pre>
-
-## Print success message
-```bash
-print-debug "This is a success message" --type success
-```
-**Output**
-<pre><code class="language-html"><span style="color:green">Success: [This is a success message]</span>
-</code></pre>
-
-## Print error message
-```bash
-print-debug "This is an error message" --type error
-```
-**Output**
-<pre><code class="language-html"><span style="color:red">ERROR: [This is an error message]</span>
-</code></pre>
-
-## Log messages to a file
-Enable logging and specify a custom log file location.
-```bash
-print-debug "This is a logged message" --log --log-dir /tmp/custom-path.log
+export ENABLE_LOG=true
+export LOG="/tmp/my-log.log"
+print-debug "Logged message" -t info
 ```
 
-## Uppercase conversion
-Convert the message to uppercase:
+## Text Formatting
 ```bash
-print-debug "This will be uppercase" 
+print-debug "uppercase message" --upper
+print-debug "message with extra line" --double-line
+print-debug "message to stderr" --redirect-to-stderr
 ```
-**Output**
-```bash
-DEBUG: [THIS WILL BE UPPERCASE]
-```
-
 
 # Customization
 
-## Customizing Message Colors
-You can override the default colors for each message type by setting the following environment variables.
+## Message Format Customization
+Customize message formats using environment variables:
+```bash
+export INFO_FORMAT_OVERRIDE="[INFO] MESSAGE"
+export DEBUG_FORMAT_OVERRIDE="DEBUG: MESSAGE"
+```
 
-| Environment Variable      | Default Value         | Description                    |
-|---------------------------|-----------------------|--------------------------------|
-| `INFO_COLOR_OVERRIDE`      | `\e[0m` (No color)    | Default color for info messages|
-| `WARN_COLOR_OVERRIDE`      | `\e[33m` (Yellow)     | Default color for warning messages|
-| `SUCCESS_COLOR_OVERRIDE`   | `\e[32m` (Green)      | Default color for success messages|
-| `ERROR_COLOR_OVERRIDE`     | `\e[31m` (Red)        | Default color for error messages|
-| `DEBUG_COLOR_OVERRIDE`     | `\e[34m` (Blue)       | Default color for debug messages|
+## Color Customization
+Override default colors:
+```bash
+export ERROR_COLOR_OVERRIDE="\e[91m"  # Bright red
+export SUCCESS_COLOR_OVERRIDE="\e[92m"  # Bright green
+```
 
+# Migration from v1.0
 
-## Customizing Message Formats
-You can customize the format of messages by setting the following environment variables. Use `MESSAGE` as a placeholder for the actual message content.
+All existing print-debug usage continues to work unchanged. Enhanced features are opt-in:
 
-|  Environment Variable       | Default Format              | Description                     |
-|-----------------------------|-----------------------------|---------------------------------|
-| `INFO_FORMAT_OVERRIDE`      | `INFO: [MESSAGE]`           | Default format for info messages|
-| `WARN_FORMAT_OVERRIDE`      | `WARNING: [MESSAGE]`        | Default format for warning messages|
-| `SUCCESS_FORMAT_OVERRIDE`   | `Success: [MESSAGE]`        | Default format for success messages|
-| `ERROR_FORMAT_OVERRIDE`     | `ERROR: [MESSAGE]`          | Default format for error messages|
-| `DEBUG_FORMAT_OVERRIDE`     | `DEBUG: [MESSAGE]`          | Default format for debug messages|
+```bash
+# v1.0 usage (still works)
+print-debug "Message" -t info
 
+# v2.0 enhanced usage
+print-debug "Message" -t info -m component --component-log --show-resources
+```
 
-# Environment Variables Summary
-| Variable                   | Description                                            |
-|----------------------------|--------------------------------------------------------|
-| `LOG`                      | The path to the log file                               |
-| `ENABLE_LOG`               | Enables logging when set to `true`                     |
-| `ENABLE_DEBUG`             | Enables debug messages when set to `true`              |
-| `INFO_COLOR_OVERRIDE`      | Custom color for `info` messages                         |
-| `WARN_COLOR_OVERRIDE`      | Custom color for `warning` messages                      |
-| `SUCCESS_COLOR_OVERRIDE`   | Custom color for `success` messages                      |
-| `ERROR_COLOR_OVERRIDE`     | Custom color for `error` messages                        |
-| `DEBUG_COLOR_OVERRIDE`     | Custom color for `debug` messages                        |
-| `INFO_FORMAT_OVERRIDE`     | Custom format for `info` messages                        |
-| `WARN_FORMAT_OVERRIDE`     | Custom format for `warning` messages                     |
-| `SUCCESS_FORMAT_OVERRIDE`  | Custom format for `success` messages                     |
-| `ERROR_FORMAT_OVERRIDE`    | Custom format for `error` messages                       |
-| `DEBUG_FORMAT_OVERRIDE`    | Custom format for `debug` messages                       |
-
-# Display Help
-Use `--help` or `-h` to display the help message, which includes all available options and environment variables.
+# Help
+Use `--help` or `-h` to display comprehensive help with all options:
+```bash
+print-debug --help
+```
